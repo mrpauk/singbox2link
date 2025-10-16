@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sing-box → V2Ray Link Converter</title>
+  <style>
+    body {
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: #0f1724;
+      color: #e6eef8;
+      padding: 24px
+    }
+    .card {
+      background: #0b1220;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 12px;
+      padding: 18px;
+      max-width: 900px;
+      margin: 16px auto;
+      box-shadow: 0 8px 30px rgba(2, 6, 23, 0.7)
+    }
+    textarea {
+      width: 100%;
+      height: 220px;
+      background: #071127;
+      color: #dff0ff;
+      border-radius: 8px;
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      resize: vertical
+    }
+    .row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-top: 10px
+    }
+    .btn {
+      background: #0ea5a3;
+      color: #012;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer
+    }
+    .btn.secondary {
+      background: #334155;
+      color: #e6eef8
+    }
+    .btn.danger {
+      background: #ef4444;
+      color: white
+    }
+    input[type=file] {
+      color: transparent
+    }
+    pre {
+      background: #031827;
+      padding: 12px;
+      border-radius: 8px;
+      overflow: auto
+    }
+    .result-line {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin: 6px 0
+    }
+    .badge {
+      background: #0ea5a3;
+      color: #012;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-weight: 600
+    }
+    .small {
+      font-size: 13px;
+      color: #9fb6c9
+    }
+    .actions {
+      margin-top: 12px;
+      display: flex;
+      gap: 8px
+    }
+    .copybtn {
+      background: #334155;
+      color: #e6eef8;
+      border: none;
+      padding: 6px 8px;
+      border-radius: 6px;
+      cursor: pointer
+    }
+    .downloadbtn {
+      background: #2563eb;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer
+    }
+    footer {
+      margin-top: 16px;
+      color: #93b6d0;
+      font-size: 13px
+    }
+    .flex {
+      display: flex;
+      gap: 8px;
+      align-items: center
+    }
+    .url-list {
+      margin-top: 12px
+    }
+    .hidden {
+      display: none
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Sing-box → V2Ray Link Converter</h2>
+    <p class="small">Sing-box JSON ကို paste လုပ်ပေးပါ (သို့) .json ဖိုင် upload လုပ်ပါ။ load file into editor နိပ်ပါ
+      convertနိပ်ပြီးရင် v2ray /
+      vmess / vless / ss / hysteria2 links တွေထုတ်ပေးပါမယ်။</p>
+    <label class="small">1) Sing-box JSON ကို paste / edit</label>
+    <textarea id="pasteBox" placeholder='Paste sing-box JSON here...'></textarea>
+    <div class="row">
+      <div class="flex">
+        <label class="small">.json ဖိုင် upload:</label>
+        <input id="fileInput" type="file" accept="application/json" />
+      </div>
+      <button class="btn" id="loadFileBtn">Load file into editor</button>
+    </div>
+    <div class="row">
+      <button id="convertBtn" class="btn">2) Convert</button>
+      <button id="clearBtn" class="btn secondary">Clear</button>
+      <div style="margin-left:auto" class="small">Output file name on download: <b id="filenamePreview">YYYY-MM-DD_v2ray.txt</b></div>
+    </div>
+    <div id="status" class="small" style="margin-top:10px;color:#9fe7c8"></div>
+    <div id="results" class="url-list hidden">
+      <h3 style="margin-top:14px">Result — V2Ray / URL Links</h3>
+      <div id="list"></div>
+      <div class="actions">
+        <button id="copyAllBtn" class="copybtn">Copy All</button>
+        <button id="downloadBtn" class="downloadbtn">Download v2ray.txt</button>
+        <button id="showRawBtn" class="btn secondary">Show raw (pre)</button>
+      </div>
+      <pre id="raw" class="hidden"></pre>
+    </div>
+    <footer>
+      Usage: Paste or upload sing-box JSON → press Convert → copy or download the generated links.<br>
+      Note: Hysteria2 is converted to a URL-like form but may not be supported by v2rayN—use Nekobox for Hysteria2.
+    </footer>
+  </div>
+  <script>
+    // Utility helpers mirror the python logic the user provided
+    function encodeBase64(str) { return btoa(unescape(encodeURIComponent(str))) }
+    function urlEncode(str) { return encodeURIComponent(str) }
+    function convert_shadowsocks(outbound) {
+      const server = outbound.server || ''
+      const port = outbound.server_port || ''
+      const method = outbound.method || ''
+      const password = outbound.password || ''
+      const tag = outbound.tag || 'SS'
+      const userinfo = `${method}:${password}`
+      const userinfo_b64 = encodeBase64(userinfo)
+      return `ss://${userinfo_b64}@${server}:${port}#${urlEncode(tag)}`
+    }
+    function convert_vless(outbound) {
+      const server = outbound.server || ''
+      const port = outbound.server_port || ''
+      const uuid = outbound.uuid || ''
+      const tag = outbound.tag || 'VLESS'
+      const transport = outbound.transport || {}
+      const transport_type = transport.type || 'tcp'
+      const params = { security: 'none', type: transport_type }
+      if (transport_type === 'ws') {
+        params.path = transport.path || '/'
+        if (transport.headers && transport.headers.Host) params.host = transport.headers.Host[0] || transport.headers.Host
+      }
+      const param_str = Object.keys(params).map(k => `${k}=${urlEncode(params[k])}`).join('&')
+      return `vless://${uuid}@${server}:${port}?${param_str}#${urlEncode(tag)}`
+    }
+    function convert_vmess(outbound) {
+      const cfg = {
+        v: '2',
+        ps: outbound.tag || 'VMess',
+        add: outbound.server || '',
+        port: String(outbound.server_port || ''),
+        id: outbound.uuid || '',
+        aid: String(outbound.alter_id || 0),
+        net: 'tcp',
+        type: 'none',
+        host: '',
+        path: '',
+        tls: ''
+      }
+      if (outbound.packet_encoding === 'xudp') cfg.net = 'xudp'
+      if (outbound.transport) {
+        const t = outbound.transport
+        const ttype = t.type || 'tcp'
+        cfg.net = ttype
+        if (ttype === 'ws') {
+          cfg.path = t.path || '/'
+          if (t.headers && t.headers.Host) cfg.host = Array.isArray(t.headers.Host) ? t.headers.Host[0] : t.headers.Host
+        }
+      }
+      if (outbound.tls && Object.keys(outbound.tls).length > 0) {
+        cfg.tls = 'tls'
+        if (outbound.tls.server_name) cfg.sni = outbound.tls.server_name
+      }
+      const json = JSON.stringify(cfg)
+      const b64 = encodeBase64(json)
+      return `vmess://${b64}`
+    }
+    function convert_hysteria2(outbound) {
+      const server = outbound.server || ''
+      const port = outbound.server_port || ''
+      const password = outbound.password || ''
+      const tag = outbound.tag || 'Hysteria2'
+      const tls = outbound.tls || {}
+      const sni = tls.server_name || server
+      const params = []
+      if (password) params.push(`auth=${password}`)
+      if (sni && sni !== server) params.push(`sni=${sni}`)
+      if (tls.insecure) params.push('insecure=1')
+      params.push('upmbps=100')
+      params.push('downmbps=100')
+      const param_str = params.join('&')
+      let url = `hysteria2://${password}@${server}:${port}`
+      if (param_str) url += `?${param_str}`
+      url += `#${urlEncode(tag)}`
+      return url
+    }
+    function convertSingboxJson(obj) {
+      const outbounds = obj.outbounds || []
+      const urls = []
+      for (const o of outbounds) {
+        const t = o.type || ''
+        try {
+          if (t === 'shadowsocks') urls.push(convert_shadowsocks(o))
+          else if (t === 'vless') urls.push(convert_vless(o))
+          else if (t === 'vmess') urls.push(convert_vmess(o))
+          else if (t === 'hysteria2') urls.push(convert_hysteria2(o))
+          else {/* skip trojan, selector, urltest, direct, dns, block */ }
+        } catch (e) { console.warn('convert error', e) }
+      }
+      return urls
+    }
+
+    // Helper to format current date as YYYY-MM-DD
+    function getCurrentDateFilename() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}_v2ray.txt`;
+    }
+
+    // DOM bindings
+    const pasteBox = document.getElementById('pasteBox')
+    const fileInput = document.getElementById('fileInput')
+    const loadFileBtn = document.getElementById('loadFileBtn')
+    const convertBtn = document.getElementById('convertBtn')
+    const clearBtn = document.getElementById('clearBtn')
+    const status = document.getElementById('status')
+    const results = document.getElementById('results')
+    const list = document.getElementById('list')
+    const raw = document.getElementById('raw')
+    const rawBtn = document.getElementById('showRawBtn')
+    const copyAllBtn = document.getElementById('copyAllBtn')
+    const downloadBtn = document.getElementById('downloadBtn')
+    const filenamePreview = document.getElementById('filenamePreview')
+
+    // Update filename preview on load
+    filenamePreview.textContent = getCurrentDateFilename();
+
+    loadFileBtn.addEventListener('click', () => {
+      const f = fileInput.files[0]
+      if (!f) { status.textContent = 'No file selected'; return }
+      const reader = new FileReader()
+      reader.onload = e => {
+        pasteBox.value = e.target.result
+        status.textContent = `Loaded file: ${f.name}`
+      }
+      reader.onerror = () => status.textContent = 'File read error'
+      reader.readAsText(f, 'utf-8')
+    })
+    clearBtn.addEventListener('click', () => {
+      pasteBox.value = ''
+      status.textContent = ''
+      results.classList.add('hidden')
+      list.innerHTML = ''
+      raw.textContent = ''
+      raw.classList.add('hidden')
+    })
+    convertBtn.addEventListener('click', () => {
+      status.textContent = 'Converting...'
+      list.innerHTML = ''
+      raw.textContent = ''
+      try {
+        const txt = pasteBox.value.trim()
+        if (!txt) { status.textContent = 'No JSON provided'; return }
+        const obj = JSON.parse(txt)
+        const urls = convertSingboxJson(obj)
+        if (urls.length === 0) { status.textContent = 'No convertible outbounds found'; return }
+        results.classList.remove('hidden')
+        status.textContent = `Converted ${urls.length} links`
+        raw.textContent = urls.join('\n')
+        // populate list
+        urls.forEach((u, i) => {
+          const wrap = document.createElement('div')
+          wrap.className = 'result-line'
+          const b = document.createElement('div')
+          b.className = 'badge'
+          b.textContent = i + 1
+          const txt = document.createElement('div')
+          txt.style.flex = '1'
+          txt.textContent = u
+          txt.title = u
+          const cbtn = document.createElement('button')
+          cbtn.className = 'copybtn'
+          cbtn.textContent = 'Copy'
+          cbtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(u).then(() => { status.textContent = 'Copied!' }).catch(() => { status.textContent = 'Copy failed' })
+          })
+          wrap.appendChild(b)
+          wrap.appendChild(txt)
+          wrap.appendChild(cbtn)
+          list.appendChild(wrap)
+        })
+        raw.classList.remove('hidden')
+      } catch (e) {
+        status.textContent = 'JSON parse or convert error: ' + e.message
+      }
+    })
+    rawBtn.addEventListener('click', () => { raw.classList.toggle('hidden') })
+    copyAllBtn.addEventListener('click', () => {
+      const text = raw.textContent
+      if (!text) { status.textContent = 'Nothing to copy'; return }
+      navigator.clipboard.writeText(text).then(() => status.textContent = 'All links copied').catch(() => status.textContent = 'Copy failed')
+    })
+    downloadBtn.addEventListener('click', () => {
+      const text = raw.textContent
+      if (!text) { status.textContent = 'No data to download'; return }
+      const filename = getCurrentDateFilename(); // ✅ Dynamic filename
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      status.textContent = `Downloaded ${filename}`
+    })
+  </script>
+</body>
+</html>
